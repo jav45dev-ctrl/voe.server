@@ -5,8 +5,7 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 // === LINK DEL VIDEO REDIRIGIDO ===
-const VIDEO_DIRECTO_MP4 = 'https://cloudwindow-route.com'; 
-
+const VIDEO_DIRECTO_MP4 = 'https://ugc-cdn-caching-n3dykgb0psbvigeweq.cloudwindow-route.com/engine/hls2/01/17457/im8lddlisfdo_,n,.urlset/index-v1-a1.m3u8?t=-vJzq0haAwsG9pLgSjKQqzaKpH1DX6yMc5gbFXE3MsY&s=1781248752&e=14400&f=87286194&node=zXGMiz1sWXdxYQgKybz3KDQHYomsDJS9PQuwgdh8DZ4=&i=179.29&sp=2500&asn=6057&q=n&rq=oDJoxyPqlD38FVEEeioOeoVsiNcau6qgx5axThOQ'; 
 // Duración del contenido en segundos (45 minutos por defecto)
 const DURACION_VIDEO_SEGUNDOS = 2700; 
 
