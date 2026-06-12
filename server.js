@@ -1,34 +1,46 @@
 const express = require('express');
+const axios = require('axios');
 const app = express();
 
-// Puerto dinámico para Render o 8080 para desarrollo local.
 const PORT = process.env.PORT || 8080;
 
-// === TU LINK ETERNO Y SEGURO DE GITHUB ===
-const VIDEO_DIRECTO_MP4 = 'https://github.com/jav45dev-ctrl/str.ch.core1/releases/download/v1.0/s1.oz.101.dat.mp4'; 
+// === TU ENLACE BASE DE GITHUB ===
+const VIDEO_GITHUB = 'https://github.com/jav45dev-ctrl/str.ch.core1/releases/download/v1.0/s1.oz.101.dat.mp4';
 
-// Duración del contenido en segundos (45 minutos)
-const DURACION_VIDEO_SEGUNDOS = 2700; 
-
-const TIEMPO_INICIO_CANAL = Date.now();
-
-app.get('/live.mp4', (req, res) => {
+app.get('/live.mp4', async (req, res) => {
     try {
-        const segundosDesdeInicio = Math.floor((Date.now() - TIEMPO_INICIO_CANAL) / 1000);
-        const segundoActualDelVideo = segundosDesdeInicio % DURACION_VIDEO_SEGUNDOS;
-        
-        const enlaceFinal = `${VIDEO_DIRECTO_MP4}#t=${segundoActualDelVideo}`;
-        
-        console.log(`[BÚNKER GHOST] Redirigiendo en el segundo: ${segundoActualDelVideo}`);
-        
-        // Redirección directa 302 limpia
-        return res.redirect(302, enlaceFinal);
+        console.log("[TÚNEL GHOST] Creando flujo continuo para evadir bloqueo de GitHub...");
+
+        // 1. Configuramos las cabeceras de IPTV pura para que NO descargue y SÍ reproduzca
+        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader('Transfer-Encoding', 'chunked');
+        res.setHeader('Accept-Ranges', 'bytes');
+
+        // 2. Render se conecta a GitHub simulando un navegador autorizado
+        const respuestaVideo = await axios({
+            method: 'get',
+            url: VIDEO_GITHUB,
+            responseType: 'stream',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+
+        // 3. Conectamos la manguera: los datos que entran de GitHub salen directo al usuario
+        respuestaVideo.data.pipe(res);
+
+        // Si el usuario cierra la app o cambia de canal, cortamos la manguera para no consumir recursos
+        req.on('close', () => {
+            console.log("[TÚNEL GHOST] Conexión cerrada por el usuario.");
+            respuestaVideo.data.destroy();
+        });
+
     } catch (error) {
-        console.error("Error crítico:", error.message);
-        return res.status(500).send("Error interno.");
+        console.error("Error crítico en el túnel de transmisión:", error.message);
+        return res.status(500).send("Error interno en la señal.");
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Servidor activo en puerto ${PORT}. Transmitiendo desde el búnker...`);
+    console.log(`Servidor de GHOSTtv operando en modo Túnel Seguro en puerto ${PORT}`);
 });
