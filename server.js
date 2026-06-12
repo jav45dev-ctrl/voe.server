@@ -5,35 +5,33 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 // =======================================================
-// 🔑 TUS LLAVES DEL BÚNKER PRIVADO (Cambia estos 3 datos)
+// 🔑 CONFIGURACIÓN SEGURA DEL BÚNKER PRIVADO
 // =======================================================
 const GITHUB_USER = 'jav45dev-ctrl'; // Tu usuario de GitHub
 const GITHUB_REPO = 'str.ch.core1';    // Tu repositorio privado
-const GITHUB_TOKEN = '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'; 
-// (Nota: Si no tenés el Token, ahora te enseño a sacarlo en 10 segundos)
+const NOMBRE_ARCHIVO = 's1.oz.101.dat.mp4'; // El nombre de tu video
 
-// Nombre exacto del archivo que subiste
-const NOMBRE_ARCHIVO = 's1.oz.101.dat.mp4';
+// Leemos el token de forma segura desde las variables de entorno de Render
+const GITHUB_TOKEN = process.env.MI_TOKEN_SECRETO;
 
 app.get('/live.mp4', async (req, res) => {
     try {
         console.log("[TÚNEL GHOST] Conectando de forma segura al búnker privado...");
+
+        if (!GITHUB_TOKEN) {
+            console.error("[ERROR] No se configuró la variable MI_TOKEN_SECRETO en Render.");
+            return res.status(500).send("Falta configuración de seguridad.");
+        }
 
         // Configuración de cabeceras profesionales para IPTV nativo (Evita la descarga automática)
         res.setHeader('Content-Type', 'video/mp4');
         res.setHeader('Transfer-Encoding', 'chunked');
         res.setHeader('Accept-Ranges', 'bytes');
 
-        // Construimos la URL de descarga directa autenticada con tu Token
-        const urlAutenticada = `https://${GITHUB_TOKEN}@://githubusercontent.com{GITHUB_USER}/${GITHUB_REPO}/main/releases/download/v1.0/${NOMBRE_ARCHIVO}`;
-        
-        // Si usaste la sección de Releases tradicional, la API de descarga directa segura es esta:
-        const urlReleaseApi = `https://${GITHUB_TOKEN}@://github.com{GITHUB_USER}/${GITHUB_REPO}/releases/assets/LATEST`;
-
-        // Render se conecta usando tu llave secreta
+        // 1. Render se conecta a la API de GitHub usando tu llave secreta oculta
         const respuestaVideo = await axios({
             method: 'get',
-            url: `https://://github.com{GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
+            url: `https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
             headers: {
                 'Authorization': `token ${GITHUB_TOKEN}`,
                 'Accept': 'application/vnd.github.v3+json',
@@ -41,7 +39,7 @@ app.get('/live.mp4', async (req, res) => {
             }
         });
 
-        // Buscamos el ID interno del archivo para descargarlo directo por API sin restricciones
+        // 2. Buscamos el ID interno del archivo para descargarlo directo por API sin restricciones
         const asset = respuestaVideo.data.assets.find(a => a.name === NOMBRE_ARCHIVO);
         
         if (!asset) {
@@ -49,7 +47,7 @@ app.get('/live.mp4', async (req, res) => {
             return res.status(404).send("Archivo no encontrado.");
         }
 
-        // Descargamos el flujo crudo del video de forma privada
+        // 3. Descargamos el flujo crudo del video de forma privada
         const descargaStream = await axios({
             method: 'get',
             url: asset.url,
@@ -61,7 +59,7 @@ app.get('/live.mp4', async (req, res) => {
             }
         });
 
-        // Abrimos la tubería directa hacia la app Ghost TV
+        // 4. Abrimos la manguera directa de datos hacia la app Ghost TV
         descargaStream.data.pipe(res);
 
         req.on('close', () => {
