@@ -47,7 +47,7 @@ app.get('/live.mp4', async (req, res) => {
         // 3. Conectamos la manguera directo al servidor secundario usando la cabecera octet-stream
         const descargaStream = await axios({
             method: 'get',
-            url: `https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases/assets/${asset.id}`,
+            url: `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/assets/${asset.id}`,
             responseType: 'stream',
             headers: {
                 'Authorization': `Bearer ${GITHUB_TOKEN}`,
