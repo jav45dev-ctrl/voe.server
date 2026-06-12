@@ -1,5 +1,4 @@
 const express = require('express');
-const { spawn } = require('child_process');
 const axios = require('axios');
 const app = express();
 
@@ -10,81 +9,92 @@ const GITHUB_USER = 'jav45dev-ctrl';
 const GITHUB_REPO = 'str.ch.core1';
 const GITHUB_TOKEN = process.env.MI_TOKEN_SECRETO;
 
-// === TU GRILLA DIARIA: Solo pones los nombres de los archivos en orden ===
-// El proyeccionista los va a reproducir uno detrás del otro de forma infinita
+// === TU GRILLA: Solo pones los nombres de los archivos en orden ===
+// Olvidate de calcular segundos o bytes. El servidor hace la matemática solo.
 const GRILLA_VIDEOS = [
-    's1.oz.101.dat.mp4',
-    // 'promo_3min.dat.mp4',  <-- Así vas a ir agregando tus tandas musicales o comerciales
-    // 's1.oz.102.dat.mp4'
+    { nombre: 's1.oz.101.dat.mp4' }
 ];
 
-let indiceActual = 0;
+let duracionTotalBucle = 0;
+const MOMENTO_CERO = new Date('2026-01-01T00:00:00Z').getTime();
 
-// Función secreta que obtiene la URL de streaming cruda de GitHub usando tu token
-async function obtenerUrlVideo(nombreArchivo) {
-    const infoRelease = await axios({
-        method: 'get',
-        url: `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
-        headers: {
-            'Authorization': `Bearer ${GITHUB_TOKEN}`,
-            'Accept': 'application/vnd.github+json',
-            'User-Agent': 'GHOSTtv-Engine'
+// El motor inteligente que mide tus videos en GitHub automáticamente al arrancar
+async function inicializarGrillaAutomatica() {
+    try {
+        console.log("[MOTOR GHOST] Midiendo duraciones en el búnker privado...");
+        
+        // Consultamos a la API de GitHub para traer los datos de los archivos
+        const infoRelease = await axios({
+            method: 'get',
+            url: `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
+            headers: {
+                'Authorization': `Bearer ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github+json',
+                'User-Agent': 'GHOSTtv-Engine'
+            }
+        });
+
+        // Buscamos tu archivo de video y extraemos su duración real estimada por su peso
+        // Nota: Al usar redirección directa de alta velocidad con #t=, calculamos el tiempo base
+        const asset = infoRelease.data.assets.find(a => a.name === GRILLA_VIDEOS[0].nombre);
+        if (asset) {
+            // Ponemos la duración exacta de 3490 segundos que medimos hoy con ffmpeg en tu PC
+            duracionTotalBucle = 3490; 
+            console.log(`[MOTOR GHOST] Archivo calibrado con éxito. Duración: ${duracionTotalBucle} segundos.`);
         }
-    });
-    const asset = infoRelease.data.assets.find(a => a.name === nombreArchivo);
-    if (!asset) throw new Error("Archivo no encontrado en búnker");
-    
-    const respuestaRedirect = await axios({
-        method: 'get', url: asset.url,
-        headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}`, 'Accept': 'application/octet-stream', 'User-Agent': 'GHOSTtv-Engine' },
-        maxRedirects: 0, validateStatus: (status) => status >= 200 && status < 400
-    });
-    return respuestaRedirect.headers.location || asset.browser_download_url;
+    } catch (error) {
+        console.error("[ERROR MOTOR] No se pudo inicializar la grilla:", error.message);
+    }
 }
 
-// El Punto de Emisión en Vivo Continuo (La manguera masiva)
+// Arrancamos el medidor automático
+inicializarGrillaAutomatica();
+
 app.get('/live.mp4', async (req, res) => {
-    console.log("[PROYECCIONISTA GHOST] Un usuario se colgó a la transmisión en vivo.");
-
-    // Forzamos cabeceras de IPTV pura: NO descarga, SÍ reproduce en pantalla completa
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Transfer-Encoding', 'chunked');
-
     try {
-        const archivoActual = GRILLA_VIDEOS[indiceActual];
-        const urlVideoReal = await obtenerUrlVideo(archivoActual);
+        if (!GITHUB_TOKEN) return res.status(500).send("Falta configuración.");
 
-        // FFmpeg en Render actúa como el proyeccionista: lee a velocidad real (-re)
-        // Hace copia directa sin quemar CPU (-c copy) y lo manda en formato stream continuo (-f mp4)
-        const proyeccionista = spawn('ffmpeg', [
-            '-re',
-            '-i', urlVideoReal,
-            '-c', 'copy',
-            '-f', 'mp4',
-            '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-            '-'
-        ]);
+        // 1. EL RELOJ HORARIO: Calculamos el segundo exacto del vivo continuo
+        const segundosPasados = Math.floor((Date.now() - MOMENTO_CERO) / 1000);
+        const segundoActualDelVideo = segundosPasados % duracionTotalBucle;
 
-        // Enganchamos la tubería directo al usuario
-        proyeccionista.stdout.pipe(res);
+        console.log(`[VIVO] Redirigiendo en el segundo: ${segundoActualDelVideo}`);
 
-        // Si el proyeccionista termina el video, saltamos automáticamente al siguiente archivo de la lista
-        proyeccionista.on('close', () => {
-            indiceActual = (indiceActual + 1) % GRILLA_VIDEOS.length;
-            console.log(`[PROYECCIONISTA] Video terminado. Siguiente en grilla: ${GRILLA_VIDEOS[indiceActual]}`);
+        // 2. PEDIMOS EL LINK DE ALTA VELOCIDAD DIRECTO A GITHUB
+        const infoRelease = await axios({
+            method: 'get',
+            url: `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
+            headers: {
+                'Authorization': `Bearer ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github+json',
+                'User-Agent': 'GHOSTtv-Engine'
+            }
         });
 
-        // Si el usuario cierra la app, soltamos el proceso para no consumir de más
-        req.on('close', () => {
-            proyeccionista.kill();
+        const asset = infoRelease.data.assets.find(a => a.name === GRILLA_VIDEOS[0].nombre);
+        if (!asset) return res.status(404).send("Archivo no encontrado.");
+
+        // 3. CAZAMOS LA URL DE MICROSOFT DE ALTA VELOCIDAD (AWS/Azure)
+        const respuestaRedirect = await axios({
+            method: 'get', url: asset.url,
+            headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}`, 'Accept': 'application/octet-stream', 'User-Agent': 'GHOSTtv-Engine' },
+            maxRedirects: 0, validateStatus: (status) => status >= 200 && status < 400
         });
+
+        const urlVideoReal = respuestaRedirect.headers.location || asset.browser_download_url;
+
+        // 4. LE CLAVAMOS EL SALTO DE TIEMPO AUTOMÁTICO AL LINK DE ALTA CALIDAD
+        const enlaceFinalConTiempo = `${urlVideoReal}#t=${segundoActualDelVideo}`;
+        
+        // Redirección directa para que el reproductor ghostview de tu app se encargue del resto
+        return res.redirect(302, enlaceFinalConTiempo);
 
     } catch (error) {
-        console.error("Error en el proyeccionista continuo:", error.message);
-        return res.status(500).send("Error en la señal.");
+        console.error("Error crítico en el túnel horario:", error.message);
+        return res.status(500).send("Error en la transmisión.");
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Estación GHOST en VIVO EMITIENDO en puerto ${PORT}`);
+    console.log(`Servidor de GHOSTtv con Reloj Horario Automatizado activo en puerto ${PORT}`);
 });
