@@ -20,7 +20,6 @@ const MOMENTO_CERO = new Date('2026-01-01T00:00:00Z').getTime();
 
 // 1. EL ÍNDICE MAESTRO EN VIVO (El archivo que lee tu app Ghost TV)
 app.get('/live.m3u8', (req, res) => {
-    // Calculamos el segundo exacto del reloj mundial para saber qué segmento toca
     const segundosPasados = Math.floor((Date.now() - MOMENTO_CERO) / 1000);
     const segundoActualGrilla = segundosPasados % DURACION_SEGUNDOS;
     const segmentoActual = Math.floor(segundoActualGrilla / DURACION_SEGMENTO);
@@ -40,10 +39,14 @@ app.get('/live.m3u8', (req, res) => {
     return res.send(m3u8);
 });
 
-// 2. EL DESPACHADOR DE VIDEO (Chupa los fragmentos desde el búnker de Microsoft)
-app.get('/segmento_*.ts', async (req, res) => {
+// 2. EL DESPACHADOR DE VIDEO (Usa :id para cumplir con las reglas de Node v24)
+app.get('/segmento_:id.ts', async (req, res) => {
     try {
-        const segId = parseInt(req.params[0]);
+        // Capturamos el número de segmento de forma limpia
+        const segId = parseInt(req.params.id);
+        
+        if (isNaN(segId)) return res.status(400).send("Segmento inválido.");
+
         const byteInicio = Math.floor((segId / SEGMENTOS_TOTALES) * 291644493);
         const byteFin = Math.floor(((segId + 1) / SEGMENTOS_TOTALES) * 291644493) - 1;
 
@@ -56,6 +59,7 @@ app.get('/segmento_*.ts', async (req, res) => {
             headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'GHOSTtv' }
         });
         const asset = infoRelease.data.assets.find(a => a.name === NOMBRE_ARCHIVO);
+        if (!asset) return res.status(404).send("Video no encontrado.");
         
         const respuestaRedirect = await axios({
             method: 'get', url: asset.url,
@@ -76,8 +80,9 @@ app.get('/segmento_*.ts', async (req, res) => {
         req.on('close', () => descargaChunk.data.destroy());
 
     } catch (error) {
+        console.error("Error en despacho de segmento:", error.message);
         return res.status(500).send("Error de flujo.");
     }
 });
 
-app.listen(PORT, () => console.log(`Transmisor HLS activo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Transmisor HLS activo y seguro en puerto ${PORT}`));
