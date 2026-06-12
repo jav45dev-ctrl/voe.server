@@ -10,38 +10,28 @@ const GITHUB_REPO = 'str.ch.core1';
 const NOMBRE_ARCHIVO = 's1.oz.101.dat.mp4';
 const GITHUB_TOKEN = process.env.MI_TOKEN_SECRETO;
 
-
 // === DATOS FÍSICOS REALES CALIBRADOS ===
-const DURACION_SEGUNDOS = 3490; // 58 min 10 seg convertidos a segundos
-const TAMANO_BYTES = 291644493; // Tu número exacto de bytes sin redondear
+const DURACION_SEGUNDOS = 3490; 
 
-
-// Momento cero fijo en el pasado para que el reloj sea infinito y continuo
+// Momento cero fijo en el pasado
 const MOMENTO_CERO = new Date('2026-01-01T00:00:00Z').getTime();
 
 app.get('/live.mp4', async (req, res) => {
     try {
-        console.log("[RELOJ GHOST] Calculando punto de emisión en vivo...");
+        console.log("[RELOJ GHOST] Calculando segundo del vivo...");
 
         if (!GITHUB_TOKEN) {
-            return res.status(500).send("Falta configuración de seguridad.");
+            return res.status(500).send("Falta configuración.");
         }
 
-        // 1. EL RELOJ DE LA GRILLA: Calculamos en qué segundo del bucle estamos hoy
+        // 1. CALCULAMOS EL SEGUNDO EXACTO DEL VIVO
         const tiempoPasadoMilisej_ = Date.now() - MOMENTO_CERO;
         const segundosPasados = Math.floor(tiempoPasadoMilisej_ / 1000);
         const segundoActualDelVideo = segundosPasados % DURACION_SEGUNDOS;
 
-        // 2. LA MAGIA MATEMÁTICA: Calculamos desde qué Byte tenemos que pedirle a GitHub
-        const byteDeInicio = Math.floor((segundoActualDelVideo / DURACION_SEGUNDOS) * TAMANO_BYTES);
+        console.log(`[VIVO] El reloj marca el segundo: ${segundoActualDelVideo}`);
 
-        console.log(`[VIVO] Emitiendo en segundo: ${segundoActualDelVideo}. Saltando al Byte: ${byteDeInicio}`);
-
-        // Forzamos las cabeceras de IPTV para que la app no descargue el archivo
-        res.setHeader('Content-Type', 'video/mp4');
-        res.setHeader('Transfer-Encoding', 'chunked');
-
-        // 3. Buscamos el ID del archivo en la API de GitHub
+        // 2. PEDIMOS LOS DATOS DEL ASSET A GITHUB
         const infoRelease = await axios({
             method: 'get',
             url: `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
@@ -55,32 +45,37 @@ app.get('/live.mp4', async (req, res) => {
         const asset = infoRelease.data.assets.find(a => a.name === NOMBRE_ARCHIVO);
         if (!asset) return res.status(404).send("Archivo no encontrado.");
 
-        // 4. LA TUBERÍA CON RANGO: Le pedimos a Microsoft el video a partir del byte calculado
-        const descargaStream = await axios({
+        // 3. LA JUGADA MAESTRA: Conseguimos el link de descarga temporal que genera la API
+        // Al pedirlo con la cabecera común, GitHub nos da una URL directa de su servidor de streaming (AWS/Azure)
+        const respuestaRedirect = await axios({
             method: 'get',
             url: asset.url,
-            responseType: 'stream',
             headers: {
                 'Authorization': `Bearer ${GITHUB_TOKEN}`,
                 'Accept': 'application/octet-stream',
-                'Range': `bytes=${byteDeInicio}-`, // <--- ¡AQUÍ ESTÁ EL RELOJ DE BYTES!
                 'User-Agent': 'GHOSTtv-Engine'
-            }
+            },
+            maxRedirects: 0, // Le decimos que no siga la redirección, queremos cazar la URL final
+            validateStatus: (status) => status >= 200 && status < 400 // Evitamos que tire error por el redireccionamiento 302
         });
 
-        // Enganchamos la manguera y el video sale disparado en el minuto correcto
-        descargaStream.data.pipe(res);
+        // Cazamos la URL de streaming oculta y temporal que nos da Microsoft
+        const urlVideoReal = respuestaRedirect.headers.location || asset.browser_download_url;
 
-        req.on('close', () => {
-            descargaStream.data.destroy();
-        });
+        // 4. LE CLAVAMOS EL RELOJ NATIVO AL ENLACE Y REDIRIGIMOS
+        // Sumamos el salto de tiempo al enlace final. Al ser servidores de alta velocidad, 
+        // tu reproductor nativo ghostview va a interpretar el #t= y saltará al segundo exacto de forma fluida
+        const enlaceFinalConTiempo = `${urlVideoReal}#t=${segundoActualDelVideo}`;
+        
+        console.log("[ÉXITO] Redirigiendo flujo al búnker de alta velocidad.");
+        return res.redirect(302, enlaceFinalConTiempo);
 
     } catch (error) {
-        console.error("Error crítico en el reloj del túnel:", error.message);
+        console.error("Error crítico en el túnel horario:", error.message);
         return res.status(500).send("Error en la transmisión.");
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Servidor de GHOSTtv con Reloj Horario activo en puerto ${PORT}`);
+    console.log(`Servidor de GHOSTtv activo en puerto ${PORT}`);
 });
