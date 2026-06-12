@@ -4,26 +4,44 @@ const app = express();
 
 const PORT = process.env.PORT || 8080;
 
-// === CONFIGURACIÓN DE TU REPOSITORIO PRIVADO ===
+// === CONFIGURACIÓN DEL BÚNKER PRIVADO ===
 const GITHUB_USER = 'jav45dev-ctrl';
 const GITHUB_REPO = 'str.ch.core1';
 const NOMBRE_ARCHIVO = 's1.oz.101.dat.mp4';
 const GITHUB_TOKEN = process.env.MI_TOKEN_SECRETO;
 
+
+// === DATOS FÍSICOS REALES CALIBRADOS ===
+const DURACION_SEGUNDOS = 3490; // 58 min 10 seg convertidos a segundos
+const TAMANO_BYTES = 291644493; // Tu número exacto de bytes sin redondear
+
+
+// Momento cero fijo en el pasado para que el reloj sea infinito y continuo
+const MOMENTO_CERO = new Date('2026-01-01T00:00:00Z').getTime();
+
 app.get('/live.mp4', async (req, res) => {
     try {
-        console.log("[TÚNEL GHOST] Iniciando consulta de seguridad a la API...");
+        console.log("[RELOJ GHOST] Calculando punto de emisión en vivo...");
 
         if (!GITHUB_TOKEN) {
-            console.error("[ERROR] Falta configurar la variable MI_TOKEN_SECRETO en Render.");
-            return res.status(500).send("Falta configuración.");
+            return res.status(500).send("Falta configuración de seguridad.");
         }
 
-        // Forzamos cabeceras de streaming continuo para evitar descargas en la app
+        // 1. EL RELOJ DE LA GRILLA: Calculamos en qué segundo del bucle estamos hoy
+        const tiempoPasadoMilisej_ = Date.now() - MOMENTO_CERO;
+        const segundosPasados = Math.floor(tiempoPasadoMilisej_ / 1000);
+        const segundoActualDelVideo = segundosPasados % DURACION_SEGUNDOS;
+
+        // 2. LA MAGIA MATEMÁTICA: Calculamos desde qué Byte tenemos que pedirle a GitHub
+        const byteDeInicio = Math.floor((segundoActualDelVideo / DURACION_SEGUNDOS) * TAMANO_BYTES);
+
+        console.log(`[VIVO] Emitiendo en segundo: ${segundoActualDelVideo}. Saltando al Byte: ${byteDeInicio}`);
+
+        // Forzamos las cabeceras de IPTV para que la app no descargue el archivo
         res.setHeader('Content-Type', 'video/mp4');
         res.setHeader('Transfer-Encoding', 'chunked');
 
-        // 1. Le pedimos a la API los datos del lanzamiento v1.0 de forma oficial
+        // 3. Buscamos el ID del archivo en la API de GitHub
         const infoRelease = await axios({
             method: 'get',
             url: `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
@@ -34,42 +52,35 @@ app.get('/live.mp4', async (req, res) => {
             }
         });
 
-        // 2. Buscamos el ID numérico que GitHub le asignó a tu archivo de video
         const asset = infoRelease.data.assets.find(a => a.name === NOMBRE_ARCHIVO);
-        
-        if (!asset) {
-            console.log("[ERROR] El archivo de video no existe en el lanzamiento v1.0.");
-            return res.status(404).send("Archivo no encontrado.");
-        }
+        if (!asset) return res.status(404).send("Archivo no encontrado.");
 
-        console.log(`[ÉXITO] ID del video encontrado: ${asset.id}. Conectando tubería...`);
-
-        // 3. Conectamos la manguera directo al servidor secundario usando la cabecera octet-stream
+        // 4. LA TUBERÍA CON RANGO: Le pedimos a Microsoft el video a partir del byte calculado
         const descargaStream = await axios({
             method: 'get',
-            url: `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/assets/${asset.id}`,
+            url: asset.url,
             responseType: 'stream',
             headers: {
                 'Authorization': `Bearer ${GITHUB_TOKEN}`,
                 'Accept': 'application/octet-stream',
+                'Range': `bytes=${byteDeInicio}-`, // <--- ¡AQUÍ ESTÁ EL RELOJ DE BYTES!
                 'User-Agent': 'GHOSTtv-Engine'
             }
         });
 
-        // 4. Los datos fluyen en tiempo real desde Microsoft hacia Render y de ahí al usuario
+        // Enganchamos la manguera y el video sale disparado en el minuto correcto
         descargaStream.data.pipe(res);
 
         req.on('close', () => {
-            console.log("[TÚNEL GHOST] Transmisión cerrada por el usuario.");
             descargaStream.data.destroy();
         });
 
     } catch (error) {
-        console.error("Error crítico en el túnel de la API:", error.message);
-        return res.status(500).send("Error interno en la señal.");
+        console.error("Error crítico en el reloj del túnel:", error.message);
+        return res.status(500).send("Error en la transmisión.");
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Servidor de GHOSTtv operando en puerto ${PORT}`);
+    console.log(`Servidor de GHOSTtv con Reloj Horario activo en puerto ${PORT}`);
 });
