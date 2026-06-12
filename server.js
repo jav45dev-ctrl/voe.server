@@ -10,99 +10,74 @@ const GITHUB_REPO = 'str.ch.core1';
 const NOMBRE_ARCHIVO = 's1.oz.101.dat.mp4';
 const GITHUB_TOKEN = process.env.MI_TOKEN_SECRETO;
 
-// === DATOS REALES DE TU VIDEO DE REPRODUCCIÓN ===
-const DURACION_SEGUNDOS = 3490; // Tus 58 min 10 seg exactos
+// Duración exacta del bloque de Ozark en segundos
+const DURACION_SEGUNDOS = 3490; 
+const SEGMENTOS_TOTALES = 349; // Dividimos el video en bloques virtuales de 10 segundos
+const DURACION_SEGMENTO = 10;
 
-// Momento de inicio fijo del canal para el reloj mundial continuo
+// Momento de inicio fijo del canal para el reloj continuo de la grilla
 const MOMENTO_CERO = new Date('2026-01-01T00:00:00Z').getTime();
 
-// Almacenamos la URL temporal de alta velocidad para no saturar a GitHub
-let urlStreamingCache = '';
-let ultimaActualizacionCache = 0;
+// 1. EL ÍNDICE MAESTRO EN VIVO (El archivo que lee tu app Ghost TV)
+app.get('/live.m3u8', (req, res) => {
+    // Calculamos el segundo exacto del reloj mundial para saber qué segmento toca
+    const segundosPasados = Math.floor((Date.now() - MOMENTO_CERO) / 1000);
+    const segundoActualGrilla = segundosPasados % DURACION_SEGUNDOS;
+    const segmentoActual = Math.floor(segundoActualGrilla / DURACION_SEGMENTO);
 
-async function renovarEnlaceGitHub() {
+    // Formateamos las cabeceras estándar de IPTV en vivo (HLS)
+    res.setHeader('Content-Type', 'application/x-mpegURL');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+    // Creamos el manifiesto dinámico de televisión. Le muestra al reproductor los 3 segmentos actuales en el aire
+    let m3u8 = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:${DURACION_SEGMENTO}\n#EXT-X-MEDIA-SEQUENCE:${segmentoActual}\n`;
+    
+    for (let i = 0; i < 3; i++) {
+        let segId = (segmentoActual + i) % SEGMENTOS_TOTALES;
+        m3u8 += `#EXTINF:${DURACION_SEGMENTO}.0,\nsegmento_${segId}.ts\n`;
+    }
+
+    return res.send(m3u8);
+});
+
+// 2. EL DESPACHADOR DE VIDEO (Chupa los fragmentos desde el búnker de Microsoft)
+app.get('/segmento_*.ts', async (req, res) => {
     try {
-        const ahora = Date.now();
-        // Si el enlace en cache tiene menos de 2 horas, lo seguimos usando para que vuele la velocidad
-        if (urlStreamingCache && (ahora - ultimaActualizacionCache < 7200000)) {
-            return urlStreamingCache;
-        }
+        const segId = parseInt(req.params[0]);
+        const byteInicio = Math.floor((segId / SEGMENTOS_TOTALES) * 291644493);
+        const byteFin = Math.floor(((segId + 1) / SEGMENTOS_TOTALES) * 291644493) - 1;
 
-        // Consultamos la API para sacar el enlace crudo de alta velocidad de Microsoft
+        res.setHeader('Content-Type', 'video/mp2t');
+
+        // Solicitamos a la API el enlace temporal de alta velocidad de la Release
         const infoRelease = await axios({
             method: 'get',
             url: `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
-            headers: {
-                'Authorization': `Bearer ${GITHUB_TOKEN}`,
-                'Accept': 'application/vnd.github+json',
-                'User-Agent': 'GHOSTtv-Engine'
-            }
+            headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'GHOSTtv' }
         });
-
         const asset = infoRelease.data.assets.find(a => a.name === NOMBRE_ARCHIVO);
-        if (!asset) throw new Error("Video no encontrado");
-
+        
         const respuestaRedirect = await axios({
             method: 'get', url: asset.url,
-            headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}`, 'Accept': 'application/octet-stream', 'User-Agent': 'GHOSTtv-Engine' },
+            headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}`, 'Accept': 'application/octet-stream', 'User-Agent': 'GHOSTtv' },
             maxRedirects: 0, validateStatus: (status) => status >= 200 && status < 400
         });
+        const urlVideoReal = respuestaRedirect.headers.location || asset.browser_download_url;
 
-        urlStreamingCache = respuestaRedirect.headers.location || asset.browser_download_url;
-        ultimaActualizacionCache = ahora;
-        console.log("[BÚNKER] Enlace de alta velocidad renovado con éxito.");
-        return urlStreamingCache;
-    } catch (error) {
-        console.error("[ERROR] Al conectar con el búnker:", error.message);
-        return urlStreamingCache; // Devolvemos el viejo como salvavidas
-    }
-}
-
-// EL CAÑO DE EMISIÓN EN VIVO REAL (Para tu lista.m3u de Ghost TV)
-app.get('/live.mp4', async (req, res) => {
-    try {
-        if (!GITHUB_TOKEN) return res.status(500).send("Falta token.");
-
-        // 1. EL RELOJ INVISIBLE: Calculamos el segundo exacto de la grilla del día de hoy
-        const segundosPasados = Math.floor((Date.now() - MOMENTO_CERO) / 1000);
-        const segundoActualDelVivo = segundosPasados % DURACION_SEGUNDOS;
-
-        console.log(`[EMISOR VIVO] Usuario conectado. Despachando señal continua en segundo: ${segundoActualDelVivo}`);
-
-        // 2. OBTENEMOS EL VIDEO CRUDO DE ALTA VELOCIDAD
-        const urlVideoReal = await renovarEnlaceGitHub();
-
-        // 3. CABECERAS DE TRANSMISIÓN EN VIVO PROFESIONAL (Bloquea descargas y botones de play)
-        res.setHeader('Content-Type', 'video/mp4');
-        res.setHeader('Transfer-Encoding', 'chunked');
-        res.setHeader('Cache-Control', 'no-cache, private, no-store, must-revalidate');
-
-        // 4. LA TUBERÍA FLUIDA: Le pedimos a los servidores de alta velocidad el video arrancando desde el segundo exacto
-        // Al usar un stream por tubería directa filtrada, el video arranca solo y no se puede pausar ni adelantar
-        const respuestaStream = await axios({
+        // Succionamos únicamente los bytes del mini fragmento de 10 segundos
+        const descargaChunk = await axios({
             method: 'get',
             url: urlVideoReal,
             responseType: 'stream',
-            headers: {
-                'User-Agent': 'Mozilla/5.0',
-                'Range': `bytes=${Math.floor((segundoActualDelVivo / DURACION_SEGUNDOS) * 291644493)}-`
-            }
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Range': `bytes=${byteInicio}-${byteFin}` }
         });
 
-        // El video viaja directo desde Microsoft a Render, y Render lo escupe continuo al usuario
-        respuestaStream.data.pipe(res);
-
-        req.on('close', () => {
-            console.log("[EMISOR VIVO] Usuario se desconectó de la señal.");
-            respuestaStream.data.destroy();
-        });
+        descargaChunk.data.pipe(res);
+        req.on('close', () => descargaChunk.data.destroy());
 
     } catch (error) {
-        console.error("Error en la manguera de datos continua:", error.message);
-        return res.status(500).send("Error en el flujo en vivo.");
+        return res.status(500).send("Error de flujo.");
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Estación GHOST en VIVO EMITIENDO CONTINUO en puerto ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Transmisor HLS activo en puerto ${PORT}`));
