@@ -26,7 +26,7 @@ app.get('/live.mp4', async (req, res) => {
         // 1. Le pedimos a la API los datos del lanzamiento v1.0 de forma oficial
         const infoRelease = await axios({
             method: 'get',
-            url: `https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
+            url: `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/tags/v1.0`,
             headers: {
                 'Authorization': `Bearer ${GITHUB_TOKEN}`,
                 'Accept': 'application/vnd.github+json',
